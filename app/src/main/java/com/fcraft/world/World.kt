@@ -62,7 +62,7 @@ class Gen(private val seed: Long) {
     private val PUMPKIN = Reg.id("pumpkin")
     private val BMUSH = Reg.id("brown_mushroom")
     private val RMUSH = Reg.id("red_mushroom")
-    private val FLOWERS = intArrayOf(
+    private val FLOWERS = arrayOf(
         "dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "red_tulip", "orange_tulip",
         "white_tulip", "pink_tulip", "oxeye_daisy", "cornflower", "lily_of_the_valley"
     ).map { Reg.id(it) }.toIntArray()
