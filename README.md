@@ -1,7 +1,7 @@
 # fCraft
 
 Офлайн-клон «кубической песочницы» для Android на **Kotlin**: собственный 3D-рендер (OpenGL ES 3.0),
-бесконечная процедурная генерация мира, крафт, печь, сундуки, мобы. Интерфейс — **Jetpack Compose + Material 3 Expressive**.
+бесконечная процедурная генерация мира, крафт, печь, сундуки, мобы. Интерфейс — **Jetpack Compose + Material 3**.
 Интернет не нужен: все текстуры рисуются кодом при запуске (`core/Textures.kt`), внешних ассетов нет.
 
 ## Возможности
@@ -29,7 +29,7 @@ APK собирается GitHub Actions (`.github/workflows/build.yml`): вкл�
 
 ## Стек
 
-Kotlin 2.2, AGP 8.13, Compose BOM 2025.12 (Material 3 1.4, `MaterialExpressiveTheme`), OpenGL ES 3.0.
+Kotlin 2.2, AGP 8.13, Compose BOM 2025.12 (Material 3 1.4), OpenGL ES 3.0.
 
 ## Пока нет
 
