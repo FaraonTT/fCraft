@@ -40,6 +40,10 @@ class Input {
         lx = 0f; ly = 0f
         return r
     }
+
+    fun reset() {
+        mx = 0f; mz = 0f; jump = false; down = false; breaking = false; use = false
+    }
 }
 
 class Player : Body(0f, 80f, 0f, 0.3f, 1.8f) {
@@ -92,9 +96,11 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
     var openFurnace: Furnace? = null
     var openChest: Array<ItemStack?>? = null
 
-    // состояние цели
+    // состояние цели и руки
     @Volatile var target: Hit? = null
     @Volatile var breakProg = 0f
+    @Volatile var swingPhase = 0f
+    @Volatile var useSwing = 0f
 
     private var breakX = 0
     private var breakY = 0
@@ -107,9 +113,9 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
     private var msgTimer = 0f
     private var saveTimer = 0f
     private var unloadTimer = 0f
-    private var hurtT = 0f
     private var jumpPrev = false
     private var lastJumpTap = 0L
+    private var spawnFixed = false
     private val rnd = java.util.Random()
     private val GRASS = Reg.id("grass_block")
     private var running = false
@@ -125,7 +131,6 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
         player.y = world.gen.height(sc[0], sc[1]) + 2f
         player.peakY = player.y
         load()
-        if (creative) inv.slots[0] == null
         running = true
         for (i in 0 until 2) {
             val t = Thread { workerLoop() }
@@ -211,7 +216,18 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
                 if (msgTimer <= 0f) message = ""
             }
             if (!loaded || overlay != Overlay.NONE) return
+            if (!spawnFixed) {
+                // если спавн оказался внутри кроны/блока — поднимаем игрока
+                var n = 0
+                val p = player
+                while (n < 60 && world.collides(p.x - 0.3f, p.y, p.z - 0.3f, p.x + 0.3f, p.y + 1.8f, p.z + 0.3f)) {
+                    p.y += 1f; n++
+                }
+                p.peakY = p.y
+                spawnFixed = true
+            }
             dayTime = (dayTime + dt) % DAY
+            useSwing = max(0f, useSwing - dt * 3.5f)
             physics(dt)
             interaction(dt)
             updateMobs(dt)
@@ -329,11 +345,10 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
         if (creative || overlay == Overlay.DEAD) return
         val dd = d * (1f - min(20, inv.armorPoints()) * 0.04f)
         player.health -= dd
-        hurtT = 0.3f
         if (player.health <= 0f) {
             player.health = 0f
             overlay = Overlay.DEAD
-            input.breaking = false
+            input.reset()
         }
         hudHealth = ceil(player.health).toInt()
     }
@@ -347,6 +362,7 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
             player.peakY = player.y
             player.health = 20f; player.hunger = 20f
             mobs.clear()
+            spawnFixed = false
             overlay = Overlay.NONE
             refreshHud()
         }
@@ -470,11 +486,13 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
 
         if (input.breaking) {
             if (mobHit != null) {
+                swingPhase += dt * 11f
                 if (attackCd <= 0f) {
                     hitMob(mobHit); attackCd = 0.45f
                 }
                 breakProg = 0f
             } else if (hit != null) {
+                swingPhase += dt * 11f
                 val id = world.blockAt(hit.x, hit.y, hit.z)
                 val b = Reg.blocks[id]
                 if (b != null) {
@@ -494,10 +512,14 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
                         }
                     }
                 }
-            } else breakProg = 0f
+            } else {
+                breakProg = 0f
+                swingPhase += dt * 11f
+            }
         } else {
             breakProg = 0f
             creativeCd = 0f
+            swingPhase = 0f
         }
 
         eatCd -= dt
@@ -511,6 +533,7 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
         ((x.toLong() and 0x3FFFFFF) shl 38) or ((z.toLong() and 0x3FFFFFF) shl 12) or (y.toLong() and 0xFFF)
 
     private fun useAction(hit: Hit?) {
+        useSwing = 1f
         val held = inv.held()
         if (hit != null) {
             val id = world.blockAt(hit.x, hit.y, hit.z)
@@ -528,18 +551,20 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
                         openChest = chests.getOrPut(key) { arrayOfNulls(27) }; overlay = Overlay.CHEST
                     }
                 }
-                input.breaking = false
+                input.reset()
                 invTick++
                 return
             }
         }
         if (held != null) {
             val d = held.def
-            if (d.food > 0 && eatCd <= 0f && player.hunger < 20f && hit == null) {
-                player.hunger = min(20f, player.hunger + d.food)
-                if (!creative) inv.consumeHeld()
-                eatCd = 0.8f
-                refreshHud()
+            if (d.food > 0) {
+                if (eatCd <= 0f && player.hunger < 20f) {
+                    player.hunger = min(20f, player.hunger + d.food)
+                    if (!creative) inv.consumeHeld()
+                    eatCd = 0.8f
+                    refreshHud()
+                }
                 return
             }
             val blk = d.block
@@ -821,10 +846,17 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
         }
     }
 
+    fun setCursor(st: ItemStack?) {
+        synchronized(lock) {
+            cursor = st
+            invTick++
+        }
+    }
+
     fun openInventory() {
         synchronized(lock) {
             gridW = 2; clearCraft(); overlay = Overlay.INVENTORY
-            input.breaking = false; input.mx = 0f; input.mz = 0f
+            input.reset()
             invTick++
         }
     }
@@ -844,32 +876,25 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
         synchronized(lock) {
             if (overlay == Overlay.NONE) {
                 overlay = Overlay.PAUSE
-                input.breaking = false; input.mx = 0f; input.mz = 0f
+                input.reset()
             }
         }
     }
 
     // ---------------- сохранение ----------------
-    private fun writeStack(o: DataOutputStream, s: ItemStack?) {
-        if (s == null) {
-            o.writeInt(-1); return
+    private fun ws(o: DataOutputStream, s: ItemStack?) {
+        if (s == null) o.writeUTF("") else {
+            o.writeUTF(s.def.key); o.writeInt(s.count); o.writeInt(s.dmg)
         }
-        o.writeUTF(s.def.key); o.writeInt(s.count); o.writeInt(s.dmg)
     }
 
-    private fun readStack(i: DataInputStream, tagFirst: Int? = null): ItemStack? {
+    private fun readStack(i: DataInputStream): ItemStack? {
         val key = i.readUTF()
         if (key.isEmpty()) return null
         val d = Reg.def(key)
         val c = i.readInt()
         val dm = i.readInt()
         return if (d == null) null else ItemStack(d.id, c, dm)
-    }
-
-    private fun ws(o: DataOutputStream, s: ItemStack?) {
-        if (s == null) o.writeUTF("") else {
-            o.writeUTF(s.def.key); o.writeInt(s.count); o.writeInt(s.dmg)
-        }
     }
 
     fun save() {
