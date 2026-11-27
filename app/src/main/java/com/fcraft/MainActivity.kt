@@ -7,9 +7,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicator
@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.hide(WindowInsetsCompat.Type.systemBars())
-        c.systemBarsBehavior = WindowInsetsControllerCompat.BOARDING_BEHAVIOR_COMPAT
+        c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         GameHolder.gl?.onResume()
     }
 
@@ -83,15 +83,6 @@ private fun App() {
     LaunchedEffect(Unit) {
         if (!Atlas.ready) withContext(Dispatchers.Default) { Atlas.build() }
         ready = true
-    }
-    if (!ready) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                LoadingIndicator(Modifier.size(96.dp))
-                Text("Рисуем текстуры…", style = MaterialTheme.typography.titleMedium)
-            }
-        }
-        return
     }
     var screen by remember { mutableStateOf(Screen.MENU) }
     var about by remember { mutableStateOf(false) }
@@ -117,30 +108,39 @@ private fun App() {
         if (s != null) Thread { s.stop() }.start()
     }
 
-    when (screen) {
-        Screen.MENU -> MainMenu(onPlay = { screen = Screen.WORLDS }, onSettings = { screen = Screen.SETTINGS }, onAbout = { about = true })
-        Screen.WORLDS -> {
-            BackHandler { screen = Screen.MENU }
-            WorldsScreen(onBack = { screen = Screen.MENU }, onPlay = { play(it) })
-        }
-        Screen.SETTINGS -> {
-            BackHandler { Settings.save(); screen = Screen.MENU }
-            SettingsScreen(onBack = { screen = Screen.MENU })
-        }
-        Screen.GAME -> {
-            val s = session
-            if (s != null) {
-                BackHandler {
-                    when (s.overlay) {
-                        Overlay.NONE -> s.pause()
-                        Overlay.PAUSE -> s.overlay = Overlay.NONE
-                        Overlay.DEAD -> {}
-                        else -> s.closeUi()
-                    }
-                }
-                GameScreen(s, onExit = { exit() })
+    if (!ready) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                LoadingIndicator(Modifier.size(96.dp))
+                Text("Рисуем текстуры…", style = MaterialTheme.typography.titleMedium)
             }
         }
+    } else {
+        when (screen) {
+            Screen.MENU -> MainMenu(onPlay = { screen = Screen.WORLDS }, onSettings = { screen = Screen.SETTINGS }, onAbout = { about = true })
+            Screen.WORLDS -> {
+                BackHandler { screen = Screen.MENU }
+                WorldsScreen(onBack = { screen = Screen.MENU }, onPlay = { play(it) })
+            }
+            Screen.SETTINGS -> {
+                BackHandler { Settings.save(); screen = Screen.MENU }
+                SettingsScreen(onBack = { screen = Screen.MENU })
+            }
+            Screen.GAME -> {
+                val s = session
+                if (s != null) {
+                    BackHandler {
+                        when (s.overlay) {
+                            Overlay.NONE -> s.pause()
+                            Overlay.PAUSE -> s.overlay = Overlay.NONE
+                            Overlay.DEAD -> {}
+                            else -> s.closeUi()
+                        }
+                    }
+                    GameScreen(s, onExit = { exit() })
+                }
+            }
+        }
+        if (about) AboutDialog { about = false }
     }
-    if (about) AboutDialog { about = false }
 }
