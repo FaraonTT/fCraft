@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
-
 package com.fcraft.ui
 
 import android.content.Context
@@ -32,18 +30,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -79,11 +73,11 @@ fun MainMenu(onPlay: () -> Unit, onSettings: () -> Unit, onAbout: () -> Unit) {
         Row(Modifier.fillMaxSize().padding(32.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Box(
-                    Modifier.size(190.dp).graphicsLayer { rotationZ = rot2 }.clip(MaterialShapes.Cookie12Sided.toShape())
+                    Modifier.size(190.dp).graphicsLayer { rotationZ = rot2 }.clip(RoundedCornerShape(36.dp))
                         .background(cs.tertiaryContainer)
                 )
                 Box(
-                    Modifier.size(150.dp).graphicsLayer { rotationZ = rot }.clip(MaterialShapes.Cookie9Sided.toShape())
+                    Modifier.size(150.dp).graphicsLayer { rotationZ = rot }.clip(RoundedCornerShape(28.dp))
                         .background(cs.primary),
                     contentAlignment = Alignment.Center
                 ) {
@@ -152,7 +146,7 @@ fun WorldsScreen(onBack: () -> Unit, onPlay: (WorldMeta) -> Unit) {
                         ) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(
-                                    Modifier.size(52.dp).clip(MaterialShapes.Cookie6Sided.toShape()).background(cs.primary),
+                                    Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(cs.primary),
                                     contentAlignment = Alignment.Center
                                 ) { Text(if (w.creative) "✦" else "⛏", fontSize = 24.sp, color = cs.onPrimary) }
                                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
@@ -187,8 +181,16 @@ fun WorldsScreen(onBack: () -> Unit, onPlay: (WorldMeta) -> Unit) {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Название") }, singleLine = true)
                     OutlinedTextField(value = seed, onValueChange = { seed = it }, label = { Text("Seed (необязательно)") }, singleLine = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ToggleButton(checked = !creative, onCheckedChange = { creative = false }) { Text("Выживание") }
-                        ToggleButton(checked = creative, onCheckedChange = { creative = true }) { Text("Творческий") }
+                        if (!creative) {
+                            Button(onClick = { creative = false }) { Text("Выживание") }
+                        } else {
+                            FilledTonalButton(onClick = { creative = false }) { Text("Выживание") }
+                        }
+                        if (creative) {
+                            Button(onClick = { creative = true }) { Text("Творческий") }
+                        } else {
+                            FilledTonalButton(onClick = { creative = true }) { Text("Творческий") }
+                        }
                     }
                 }
             },
