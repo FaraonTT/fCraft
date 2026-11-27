@@ -11,8 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,7 +74,6 @@ class MainActivity : ComponentActivity() {
 
 private enum class Screen { MENU, WORLDS, SETTINGS, GAME }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun App() {
     val ctx = LocalContext.current
@@ -111,7 +109,7 @@ private fun App() {
     if (!ready) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                LoadingIndicator(Modifier.size(96.dp))
+                CircularProgressIndicator()
                 Text("Рисуем текстуры…", style = MaterialTheme.typography.titleMedium)
             }
         }
