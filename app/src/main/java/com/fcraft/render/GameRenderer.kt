@@ -52,6 +52,8 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         uniform vec3 uFog;
         uniform float uFogS;
         uniform float uFogE;
+        uniform float uFogEnabled;
+        uniform float uShadersEnabled;
         uniform vec4 uHeld;
         in vec2 vUV; in vec4 vCol; in vec2 vLight; in float vDist; in vec3 vPos;
         out vec4 o;
@@ -79,6 +81,8 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
     private var uFog = 0
     private var uFogS = 0
     private var uFogE = 0
+    private var uFogEnabled = 0
+    private var uShadersEnabled = 0
     private var uHeld = 0
     private var dynBuf = 0
     private var dynFb: FloatBuffer = ByteBuffer.allocateDirect(4 * 4096).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -104,6 +108,8 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         uFog = GLES30.glGetUniformLocation(prog, "uFog")
         uFogS = GLES30.glGetUniformLocation(prog, "uFogS")
         uFogE = GLES30.glGetUniformLocation(prog, "uFogE")
+        uFogEnabled = GLES30.glGetUniformLocation(prog, "uFogEnabled")
+        uShadersEnabled = GLES30.glGetUniformLocation(prog, "uShadersEnabled")
         uHeld = GLES30.glGetUniformLocation(prog, "uHeld")
         val ids = IntArray(2)
         GLES30.glGenTextures(1, ids, 0)
@@ -511,6 +517,8 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         GLES30.glUniform3f(uCam, eyeX, eyeY, eyeZ)
         GLES30.glUniform1f(uSky, skyLevel)
         GLES30.glUniform1f(uMin, 0.07f)
+        GLES30.glUniform1f(uFogEnabled, if (Settings.fog) 1f else 0f)
+        GLES30.glUniform1f(uShadersEnabled, if (Settings.shaders) 1f else 0f)
         GLES30.glUniform4f(uHeld, 0f, 0f, 0f, 0f)
 
         // солнце и луна
