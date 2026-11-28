@@ -33,7 +33,7 @@ class Chunk(val cx: Int, val cz: Int) {
     fun get(x: Int, y: Int, z: Int): Int = blocks[(y * CS + z) * CS + x].toInt()
 }
 
-class Gen(private val seed: Long) {
+class Gen(private val seed: Long, private val flat: Boolean = false) {
     private val nCont = Noise(seed)
     private val nHill = Noise(seed + 1)
     private val nMnt = Noise(seed + 2)
@@ -93,6 +93,7 @@ class Gen(private val seed: Long) {
     }
 
     fun height(wx: Int, wz: Int): Int {
+        if (flat) return 64
         val cont = nCont.fbm(wx * 0.0035, wz * 0.0035, 4)
         val hills = nHill.fbm(wx * 0.02, wz * 0.02, 3)
         val m = nMnt.fbm(wx * 0.004 + 50, wz * 0.004 - 30, 3)
@@ -343,8 +344,8 @@ class Gen(private val seed: Long) {
     }
 }
 
-class World(val seed: Long, private val dir: File?) {
-    val gen = Gen(seed)
+class World(val seed: Long, private val dir: File?, flat: Boolean = false) {
+    val gen = Gen(seed, flat)
     val chunks = ConcurrentHashMap<Long, Chunk>()
     private val bedrock = Reg.id("bedrock")
     private val genLock = Any()
