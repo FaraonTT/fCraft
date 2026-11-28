@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.sqrt
 
 const val OP = -16777216 // 0xFF000000
@@ -80,75 +81,205 @@ class P(val px: IntArray, seed: Int) {
             if (sqrt(dx * dx + dy * dy) <= rad) set(x, y, c)
         }
     }
+
+    /** Бесшовное поле плавного шума из cells x cells узлов. */
+    fun field(cells: Int): FloatArray {
+        val lat = FloatArray(cells * cells) { r.nextFloat() }
+        val out = FloatArray(256)
+        for (y in 0 until 16) for (x in 0 until 16) {
+            val gx = x * cells / 16f
+            val gy = y * cells / 16f
+            val x0 = gx.toInt()
+            val y0 = gy.toInt()
+            val fx = gx - x0
+            val fy = gy - y0
+            val sx = fx * fx * (3 - 2 * fx)
+            val sy = fy * fy * (3 - 2 * fy)
+            val x1 = (x0 + 1) % cells
+            val y1 = (y0 + 1) % cells
+            val a = lat[y0 * cells + x0]
+            val b = lat[y0 * cells + x1]
+            val c = lat[y1 * cells + x0]
+            val d = lat[y1 * cells + x1]
+            val top = a + (b - a) * sx
+            val bot = c + (d - c) * sx
+            out[y * 16 + x] = top + (bot - top) * sy
+        }
+        return out
+    }
+
+    /** Пятнистая заливка палитрой — основа «майнкрафтовского» вида. */
+    fun palette(cols: IntArray, cells: Int = 4, fine: Float = 0.3f) {
+        val f1 = field(cells)
+        val f2 = field(cells * 2)
+        for (i in 0 until 256) {
+            var v = f1[i] * 0.5f + f2[i] * 0.3f + r.nextFloat() * fine * 0.5f
+            v = ((v - 0.46f) * 2.4f + 0.5f).coerceIn(0f, 0.999f)
+            px[i] = cols[(v * cols.size).toInt()]
+        }
+    }
 }
 
 /** Генераторы текстур. Всё рисуется в коде — внешних картинок нет. */
 object G {
-    fun noisy(c: Int, a: Int = 10): (P) -> Unit = { p -> p.noise(c, a) }
-
-    fun ore(stone: Int, spot: Int): (P) -> Unit = { p ->
-        p.noise(stone, 8)
-        repeat(7) {
-            val cx = p.ri(13) + 1
-            val cy = p.ri(13) + 1
-            for (dx in 0..1) for (dy in 0..1) p.set(cx + dx, cy + dy, p.jit(rgb(spot), 14))
-        }
+    fun shades(c: Int, s: Float): IntArray {
+        val b = rgb(c)
+        return intArrayOf(mulC(b, 1f - 2.2f * s), mulC(b, 1f - 0.8f * s), mulC(b, 1f + 0.5f * s), mulC(b, 1f + 1.4f * s))
     }
 
-    fun planks(c: Int): (P) -> Unit = { p ->
+    fun noisy(c: Int, a: Int = 10): (P) -> Unit = { p ->
+        p.palette(shades(c, (a / 60f).coerceIn(0.05f, 0.2f)), 4, 0.3f)
+    }
+
+    fun grassTop(): (P) -> Unit = { p -> p.palette(shades(0xC8C8C8, 0.1f), 3, 0.4f) }
+
+    fun cobble(base: Int, cells: Int = 10, edge: Float = 0.62f, spread: Float = 0.16f): (P) -> Unit = { p ->
+        val sx = FloatArray(cells) { p.ri(160) / 10f }
+        val sy = FloatArray(cells) { p.ri(160) / 10f }
+        val tone = FloatArray(cells) { 1f - spread + p.r.nextFloat() * spread * 2f }
+        val b = rgb(base)
         for (y in 0 until 16) for (x in 0 until 16) {
-            var col = p.jit(rgb(c), 6)
-            if (y % 4 == 3) col = mulC(col, 0.78f)
-            val seam = if ((y / 4) % 2 == 0) 5 else 12
-            if (x == seam && y % 4 != 3) col = mulC(col, 0.85f)
+            var d1 = 1e9f
+            var d2 = 1e9f
+            var id = 0
+            for (i in 0 until cells) {
+                var dx = abs(x + 0.5f - sx[i])
+                var dy = abs(y + 0.5f - sy[i])
+                if (dx > 8f) dx = 16f - dx
+                if (dy > 8f) dy = 16f - dy
+                val d = sqrt(dx * dx + dy * dy)
+                if (d < d1) {
+                    d2 = d1; d1 = d; id = i
+                } else if (d < d2) d2 = d
+            }
+            var col = mulC(b, tone[id])
+            if (d2 - d1 < 1.1f) col = mulC(col, edge)
+            else if (p.ri(100) < 12) col = mulC(col, 0.93f)
             p.set(x, y, col)
         }
     }
 
-    fun logSide(c: Int): (P) -> Unit = { p ->
-        for (x in 0 until 16) {
-            val f = 0.82f + ((x * 37 + 11) % 5) * 0.06f
-            for (y in 0 until 16) p.set(x, y, mulC(p.jit(rgb(c), 5), f))
+    fun ore(stone: Int, spot: Int): (P) -> Unit = { p ->
+        p.palette(shades(stone, 0.12f), 4, 0.3f)
+        val col = rgb(spot)
+        val shape = arrayOf(0 to 0, 1 to 0, 0 to 1, 1 to 1, -1 to 0, 0 to -1)
+        repeat(6) {
+            val cx = 2 + p.ri(11)
+            val cy = 2 + p.ri(11)
+            for ((dx, dy) in shape) {
+                if ((dx == 0 && dy == 0) || p.ri(100) < 70) {
+                    val c = if (p.ri(4) == 0) mulC(col, 1.3f) else if (p.ri(4) == 0) mulC(col, 0.78f) else col
+                    p.set(cx + dx, cy + dy, c)
+                }
+            }
         }
+    }
+
+    fun planks(c: Int): (P) -> Unit = { p ->
+        val base = rgb(c)
+        for (row in 0 until 4) {
+            val tone = 0.9f + p.r.nextFloat() * 0.2f
+            val y0 = row * 4
+            for (y in y0 until y0 + 4) for (x in 0 until 16) {
+                var col = mulC(base, tone)
+                if (y == y0 + 3) col = mulC(col, 0.7f)
+                else if (y == y0) col = mulC(col, 1.08f)
+                else if (p.ri(100) < 22) col = mulC(col, 0.9f)
+                p.set(x, y, col)
+            }
+            val jx = (row * 7 + 3) % 16
+            for (y in y0 until y0 + 3) p.set(jx, y, mulC(base, 0.74f))
+            val sx = p.ri(10)
+            val sy = y0 + 1 + p.ri(2)
+            for (i in 0..(3 + p.ri(4))) p.set((sx + i) % 16, sy, mulC(base, 0.86f))
+        }
+    }
+
+    fun logSide(c: Int): (P) -> Unit = { p ->
+        val pal = shades(c, 0.16f)
+        var idx = p.ri(4)
+        for (x in 0 until 16) {
+            idx = (idx + p.ri(3) - 1).coerceIn(0, 3)
+            for (y in 0 until 16) {
+                val k = if (p.ri(100) < 14) (idx + 1).coerceAtMost(3) else if (p.ri(100) < 10) (idx - 1).coerceAtLeast(0) else idx
+                p.set(x, y, pal[k])
+            }
+        }
+        val kx = 2 + p.ri(12)
+        val ky = 2 + p.ri(12)
+        p.set(kx, ky, mulC(rgb(c), 0.6f)); p.set(kx, ky + 1, mulC(rgb(c), 0.7f))
     }
 
     fun logTop(ring: Int, bark: Int): (P) -> Unit = { p ->
+        val barkP = shades(bark, 0.14f)
+        val ringP = shades(ring, 0.1f)
         for (y in 0 until 16) for (x in 0 until 16) {
             val d = maxOf(abs(x - 7.5f), abs(y - 7.5f))
-            val c = if (d > 6.5f) rgb(bark) else if (d.toInt() % 2 == 0) rgb(ring) else mulC(rgb(ring), 0.85f)
-            p.set(x, y, p.jit(c, 4))
+            val c = when {
+                d > 6.5f -> barkP[p.ri(3)]
+                d > 5.5f -> mulC(rgb(ring), 0.78f)
+                d.toInt() % 2 == 0 -> ringP[2 + p.ri(2)]
+                else -> ringP[p.ri(2)]
+            }
+            p.set(x, y, c)
         }
+        p.rect(7, 7, 2, 2, mulC(rgb(ring), 0.65f))
     }
 
     fun leaves(c: Int): (P) -> Unit = { p ->
-        for (i in 0 until 256) p.px[i] = if (p.ri(100) < 14) 0 else p.jit(rgb(c), 22)
+        p.palette(shades(c, 0.2f), 3, 0.5f)
+        for (i in 0 until 256) if (p.ri(100) < 9) p.px[i] = 0
     }
 
     fun bricks(brick: Int, mortar: Int): (P) -> Unit = { p ->
-        for (y in 0 until 16) for (x in 0 until 16) {
-            val off = if ((y / 4) % 2 == 0) 0 else 4
-            val m = y % 4 == 3 || (x + off) % 8 == 7
-            p.set(x, y, if (m) p.jit(rgb(mortar), 4) else p.jit(rgb(brick), 8))
+        val bc = rgb(brick)
+        val mc = rgb(mortar)
+        for (i in 0 until 256) p.px[i] = p.jit(mc, 5)
+        for (row in 0 until 4) {
+            val off = if (row % 2 == 0) 0 else 4
+            for (bx in -1..1) {
+                val x0 = bx * 8 + off
+                val tone = 0.86f + p.r.nextFloat() * 0.26f
+                for (y in row * 4 until row * 4 + 3) for (x in x0 until x0 + 7) {
+                    if (x in 0..15) p.set(x, y, mulC(p.jit(bc, 4), if (y == row * 4) tone * 1.1f else tone))
+                }
+            }
         }
     }
 
     fun stoneBricks(c: Int): (P) -> Unit = { p ->
-        for (y in 0 until 16) for (x in 0 until 16) {
-            val off = if (y / 8 == 0) 0 else 4
-            val m = y % 8 == 7 || (x + off) % 8 == 7
-            p.set(x, y, if (m) mulC(p.jit(rgb(c), 4), 0.7f) else p.jit(rgb(c), 6))
+        val bc = rgb(c)
+        for (i in 0 until 256) p.px[i] = mulC(p.jit(bc, 3), 0.62f)
+        for (row in 0 until 2) {
+            val off = if (row == 0) 0 else 4
+            for (bx in -1..1) {
+                val x0 = bx * 8 + off
+                val tone = 0.92f + p.r.nextFloat() * 0.16f
+                for (y in row * 8 until row * 8 + 7) for (x in x0 until x0 + 7) {
+                    if (x in 0..15) {
+                        var col = mulC(p.jit(bc, 5), tone)
+                        if (y == row * 8) col = mulC(col, 1.12f)
+                        p.set(x, y, col)
+                    }
+                }
+            }
         }
     }
 
     fun dirt(): (P) -> Unit = { p ->
-        p.noise(0x866043, 9)
-        repeat(14) { p.set(p.ri(16), p.ri(16), p.jit(rgb(0x5C4129), 8)) }
+        p.palette(shades(0x866043, 0.13f), 4, 0.35f)
+        repeat(6) { p.set(p.ri(16), p.ri(16), rgb(0x5A3E28)) }
+        repeat(3) { p.set(p.ri(16), p.ri(16), rgb(0x9A7552)) }
     }
 
-    fun grassSide(dirtC: Int = 0x866043, grass: Int = 0x79B24A): (P) -> Unit = { p ->
+    fun grassSide(dirtC: Int = 0x866043, grass: Int = 0x6A9244): (P) -> Unit = { p ->
+        p.palette(shades(dirtC, 0.13f), 4, 0.35f)
+        val g = shades(grass, 0.1f)
         for (x in 0 until 16) {
-            val d = 2 + p.ri(3)
-            for (y in 0 until 16) p.set(x, y, if (y < d) p.jit(rgb(grass), 10) else p.jit(rgb(dirtC), 9))
+            val d = 3 + p.ri(2)
+            for (y in 0 until d) p.set(x, y, g[1 + p.ri(3)])
+            if (p.ri(100) < 55) p.set(x, d, g[p.ri(3)])
+            if (p.ri(100) < 20) p.set(x, d + 1, g[p.ri(2)])
         }
     }
 
@@ -159,15 +290,13 @@ object G {
         }
         for (i in 3..5) p.set(i, 3, (0xCC shl 24) or 0xFFFFFF)
         p.set(3, 4, (0xCC shl 24) or 0xFFFFFF)
+        p.set(11, 12, (0xAA shl 24) or 0xFFFFFF); p.set(12, 11, (0xAA shl 24) or 0xFFFFFF)
     }
 
-    fun wool(c: Int): (P) -> Unit = { p ->
-        p.noise(c, 7)
-        for (y in 0 until 16) for (x in 0 until 16) if ((x + y) % 2 == 0) p.set(x, y, mulC(p.get(x, y), 0.95f))
-    }
+    fun wool(c: Int): (P) -> Unit = { p -> p.palette(shades(c, 0.07f), 8, 0.6f) }
 
     fun sandstone(c: Int, kind: Int): (P) -> Unit = { p ->
-        p.noise(c, 6)
+        p.palette(shades(c, 0.06f), 4, 0.3f)
         if (kind == 1) for (y in 0 until 16) for (x in 0 until 16) {
             if (y in 1..2 || y in 13..14) p.set(x, y, mulC(p.get(x, y), 0.9f))
             if (y == 7 || y == 8) p.set(x, y, mulC(p.get(x, y), 0.94f))
@@ -175,29 +304,26 @@ object G {
     }
 
     fun metal(c: Int): (P) -> Unit = { p ->
-        p.noise(c, 5)
+        p.palette(shades(c, 0.05f), 4, 0.2f)
         for (i in 0 until 16) {
             for (e in listOf(0, 15)) {
-                p.set(i, e, mulC(p.get(i, e), 1.12f))
-                p.set(e, i, mulC(p.get(e, i), 0.88f))
+                p.set(i, e, mulC(p.get(i, e), 1.14f))
+                p.set(e, i, mulC(p.get(e, i), 0.86f))
             }
         }
     }
 
     fun liquid(c: Int, a: Int): (P) -> Unit = { p ->
-        for (i in 0 until 256) {
-            val col = p.jit(rgb(c), 14)
-            p.px[i] = (a shl 24) or (col and 0xFFFFFF)
-        }
+        p.palette(shades(c, 0.1f), 4, 0.2f)
+        for (i in 0 until 256) p.px[i] = (a shl 24) or (p.px[i] and 0xFFFFFF)
     }
 
     fun lava(): (P) -> Unit = { p ->
-        p.noise(0xE5600F, 28)
-        repeat(30) { p.set(p.ri(16), p.ri(16), p.jit(rgb(0xFFC93C), 10)) }
+        p.palette(intArrayOf(rgb(0xB83A08), rgb(0xE5600F), rgb(0xF58A1F), rgb(0xFFC93C)), 4, 0.5f)
     }
 
     fun cactusSide(): (P) -> Unit = { p ->
-        p.noise(0x2F7B2D, 8)
+        p.palette(shades(0x2F7B2D, 0.1f), 4, 0.3f)
         for (y in 0 until 16) {
             p.set(2, y, rgb(0x1E5A1E)); p.set(7, y, rgb(0x1E5A1E)); p.set(12, y, rgb(0x1E5A1E))
         }
@@ -205,7 +331,7 @@ object G {
     }
 
     fun cactusTop(): (P) -> Unit = { p ->
-        p.noise(0x3E8E3A, 6)
+        p.palette(shades(0x3E8E3A, 0.08f), 3, 0.3f)
         p.rect(0, 0, 16, 1, rgb(0x1E5A1E)); p.rect(0, 15, 16, 1, rgb(0x1E5A1E))
         p.rect(0, 0, 1, 16, rgb(0x1E5A1E)); p.rect(15, 0, 1, 16, rgb(0x1E5A1E))
     }
@@ -218,7 +344,7 @@ object G {
     }
 
     fun pumpkinTop(): (P) -> Unit = { p ->
-        p.noise(0xC77A18, 8)
+        p.palette(shades(0xC77A18, 0.08f), 4, 0.3f)
         p.rect(6, 6, 4, 4, rgb(0x5B7A24))
     }
 
@@ -256,7 +382,7 @@ object G {
     }
 
     fun furnaceFront(lit: Boolean): (P) -> Unit = { p ->
-        p.noise(0x808080, 8)
+        cobble(0x808080, 9, 0.6f, 0.1f)(p)
         p.rect(3, 3, 10, 3, rgb(0x3A3A3A))
         p.rect(3, 7, 10, 7, rgb(0x2A2A2A))
         if (lit) p.rect(5, 9, 6, 4, rgb(0xF0801A))
@@ -286,7 +412,7 @@ object G {
     }
 
     fun sponge(): (P) -> Unit = { p ->
-        p.noise(0xCFCF4D, 10)
+        p.palette(shades(0xCFCF4D, 0.08f), 4, 0.4f)
         repeat(18) { p.set(p.ri(16), p.ri(16), rgb(0x8C8C2A)) }
     }
 
@@ -322,6 +448,7 @@ object G {
         p.rect(7, 6, 2, 10, rgb(0x6B4A22))
         p.rect(7, 3, 2, 3, rgb(0xFFD23C))
         p.set(7, 3, rgb(0xFF8A1E))
+        p.set(8, 6, rgb(0x8A6232)); p.set(8, 8, rgb(0x8A6232)); p.set(8, 10, rgb(0x8A6232))
     }
 
     fun cane(): (P) -> Unit = { p ->
@@ -509,31 +636,120 @@ object Tex {
     private val gens = ArrayList<(P) -> Unit>()
     private val map = HashMap<String, Int>()
 
+    /** Индексы изометрических иконок блоков: id предмета -> тайл. */
+    val iso = HashMap<Int, Int>()
+    private var rowsTotal = 0
+
+    // Эти имена перекрывают генераторы из реестра более красивыми версиями
+    private val overrides = HashMap<String, (P) -> Unit>()
+
     init {
+        overrides["grass_top"] = G.grassTop()
+        overrides["cobblestone"] = G.cobble(0x7E7E7E)
+        overrides["mossy_cobblestone"] = G.cobble(0x667F62)
+        overrides["cobbled_deepslate"] = G.cobble(0x4D4D52, 9)
+        overrides["gravel"] = G.cobble(0x8C8683, 20, 0.72f, 0.2f)
         reg("white") { it.fill(rgb(0xFFFFFF)) }
     }
 
     fun reg(name: String, g: (P) -> Unit): Int {
         map[name]?.let { return it }
         val i = names.size
-        names.add(name); gens.add(g); map[name] = i
+        names.add(name); gens.add(overrides[name] ?: g); map[name] = i
         return i
     }
 
     val count: Int get() = names.size
-    val rows: Int get() = maxOf(1, (names.size + COLS - 1) / COLS)
+    val rows: Int get() = if (rowsTotal > 0) rowsTotal else max(1, (names.size + COLS - 1) / COLS)
+
+    private fun outline(t: IntArray) {
+        val src = t.copyOf()
+        for (y in 0 until 16) for (x in 0 until 16) {
+            if ((src[y * 16 + x] ushr 24) > 30) continue
+            var near = false
+            if (x > 0 && (src[y * 16 + x - 1] ushr 24) > 200) near = true
+            if (x < 15 && (src[y * 16 + x + 1] ushr 24) > 200) near = true
+            if (y > 0 && (src[(y - 1) * 16 + x] ushr 24) > 200) near = true
+            if (y < 15 && (src[(y + 1) * 16 + x] ushr 24) > 200) near = true
+            if (near) t[y * 16 + x] = (0xDD shl 24) or 0x1A1A24
+        }
+    }
+
+    private fun tintPx(c: Int, t: Int): Int {
+        if (t == 0xFFFFFF) return c
+        val a = c ushr 24
+        val r = (((c shr 16) and 255) * ((t shr 16) and 255)) / 255
+        val g = (((c shr 8) and 255) * ((t shr 8) and 255)) / 255
+        val b = ((c and 255) * (t and 255)) / 255
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
+    }
+
+    private fun isoCube(top: IntArray, side: IntArray, tintTop: Int, tintSide: Int): IntArray {
+        val out = IntArray(256)
+        for (py in 0 until 16) for (pxx in 0 until 16) {
+            val x = pxx + 0.5f
+            val y = py + 0.5f
+            val s = ((x - 8f) / 7f + (y - 1f) / 4f) / 2f
+            val t = ((y - 1f) / 4f - (x - 8f) / 7f) / 2f
+            if (s in 0f..1f && t in 0f..1f) {
+                val c = top[(t * 16).toInt().coerceIn(0, 15) * 16 + (s * 16).toInt().coerceIn(0, 15)]
+                out[py * 16 + pxx] = tintPx(c, tintTop)
+                continue
+            }
+            if (x < 8f) {
+                val ls = (x - 1f) / 7f
+                val lt = (y - 5f - 4f * ls) / 6f
+                if (ls in 0f..1f && lt in 0f..1f) {
+                    val c = side[(lt * 16).toInt().coerceIn(0, 15) * 16 + (ls * 16).toInt().coerceIn(0, 15)]
+                    out[py * 16 + pxx] = mulC(tintPx(c, tintSide), 0.8f)
+                }
+            } else {
+                val rs = (x - 8f) / 7f
+                val rt = (y - 9f + 4f * rs) / 6f
+                if (rs in 0f..1f && rt in 0f..1f) {
+                    val c = side[(rt * 16).toInt().coerceIn(0, 15) * 16 + (rs * 16).toInt().coerceIn(0, 15)]
+                    out[py * 16 + pxx] = mulC(tintPx(c, tintSide), 0.62f)
+                }
+            }
+        }
+        return out
+    }
 
     fun buildAtlas(): Bitmap {
-        val w = COLS * TS
-        val h = rows * TS
-        val px = IntArray(w * h)
-        val tile = IntArray(256)
+        val tiles = ArrayList<IntArray>()
         for (i in 0 until names.size) {
-            tile.fill(0)
-            gens[i](P(tile, names[i].hashCode()))
+            val t = IntArray(256)
+            gens[i](P(t, names[i].hashCode()))
+            if (names[i].startsWith("item_")) outline(t)
+            tiles.add(t)
+        }
+        iso.clear()
+        for (d in Reg.items) {
+            val b = d.block ?: continue
+            if (d.hidden || b.render == R_CROSS || b.render == R_LIQUID) continue
+            val tintTop = when (b.tint) {
+                1, 2 -> 0x8DC25A
+                3 -> b.tintColor
+                else -> 0xFFFFFF
+            }
+            val tintSide = when (b.tint) {
+                2 -> 0x8DC25A
+                3 -> b.tintColor
+                else -> 0xFFFFFF
+            }
+            iso[d.id] = tiles.size
+            tiles.add(isoCube(tiles[b.top], tiles[b.side], tintTop, tintSide))
+        }
+        val rowsN = max(1, (tiles.size + COLS - 1) / COLS)
+        rowsTotal = rowsN
+        val w = COLS * TS
+        val h = rowsN * TS
+        val px = IntArray(w * h)
+        for (i in 0 until tiles.size) {
             val ox = (i % COLS) * TS
             val oy = (i / COLS) * TS
-            for (y in 0 until TS) for (x in 0 until TS) px[(oy + y) * w + ox + x] = tile[y * TS + x]
+            val t = tiles[i]
+            for (y in 0 until TS) for (x in 0 until TS) px[(oy + y) * w + ox + x] = t[y * TS + x]
         }
         return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
     }
@@ -545,6 +761,8 @@ object Atlas {
 
     @Volatile
     var ready = false
+
+    fun tileOf(d: ItemDef): Int = Tex.iso[d.id] ?: d.icon
 
     @Synchronized
     fun build() {
