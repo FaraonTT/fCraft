@@ -1,6 +1,9 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package com.fcraft.ui
 
 import android.os.Build
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,19 +12,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.Canvas
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -51,8 +55,9 @@ fun FCraftTheme(content: @Composable () -> Unit) {
         surfaceVariant = Color(0xFF43483E), onSurfaceVariant = Color(0xFFC3C8BA),
         outline = Color(0xFF8D9286)
     )
-    MaterialTheme(
+    MaterialExpressiveTheme(
         colorScheme = scheme,
+        motionScheme = MotionScheme.expressive(),
         typography = Typography(),
         content = content
     )
@@ -63,7 +68,7 @@ fun ItemIcon(id: Int, sz: Dp, modifier: Modifier = Modifier) {
     val def = Reg.items[id]
     val img = Atlas.image
     Canvas(modifier.size(sz)) {
-        val t = def.icon
+        val t = Atlas.tileOf(def)
         val tx = (t % Tex.COLS) * 16
         val ty = (t / Tex.COLS) * 16
         drawImage(
@@ -76,13 +81,20 @@ fun ItemIcon(id: Int, sz: Dp, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * [rev] меняется при любом изменении инвентаря — без него Compose пропускает
+ * перерисовку, потому что ItemStack изменяется «на месте» (тот же экземпляр).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SlotView(
-    stack: ItemStack?, sz: Dp, selected: Boolean = false,
+    stack: ItemStack?, sz: Dp, selected: Boolean = false, rev: Int = 0,
     onClick: () -> Unit = {}, onLong: () -> Unit = {}
 ) {
     val shape = RoundedCornerShape(10.dp)
+    val id = stack?.id ?: -1
+    val count = stack?.count ?: 0
+    val dmg = stack?.dmg ?: 0
     Box(
         Modifier
             .size(sz)
@@ -92,18 +104,18 @@ fun SlotView(
             .combinedClickable(onClick = onClick, onLongClick = onLong),
         contentAlignment = Alignment.Center
     ) {
-        if (stack != null) {
-            ItemIcon(stack.id, sz * 0.72f)
-            if (stack.count > 1) {
+        if (stack != null && id >= 0) {
+            ItemIcon(id, sz * 0.74f)
+            if (count > 1) {
                 Text(
-                    "${stack.count}",
+                    "$count",
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 1.dp),
                     fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White
                 )
             }
             val dur = stack.def.durability
-            if (dur > 0 && stack.dmg > 0) {
-                val frac = (1f - stack.dmg.toFloat() / dur).coerceIn(0f, 1f)
+            if (dur > 0 && dmg > 0) {
+                val frac = (1f - dmg.toFloat() / dur).coerceIn(0f, 1f)
                 Box(
                     Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp)
                         .size(width = sz * 0.7f * frac, height = 2.5.dp)
