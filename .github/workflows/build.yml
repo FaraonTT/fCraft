@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,9 +27,12 @@ jobs:
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "sdk.dir=$SDK" > local.properties
+
           SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
           yes | "$SM" --licenses > /dev/null || true
-          "$SM" "platforms;android-36" "build-tools;36.0.0" || true
+
+          "$SM" "platforms;android-36" "build-tools;36.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
