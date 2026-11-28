@@ -13,7 +13,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.*
 
-enum class Overlay { NONE, PAUSE, INVENTORY, CRAFTING, FURNACE, CHEST, DEAD }
+enum class Overlay { NONE, PAUSE, INVENTORY, CRAFTING, FURNACE, CHEST, COMMAND, DEAD }
 
 class MeshResult(val cx: Int, val cz: Int, val data: MeshData)
 
@@ -66,7 +66,7 @@ const val DAY = 1200f
 class GameSession(val ctx: Context, val meta: WorldMeta) {
     val lock = Any()
     private val dir = meta.dir(ctx)
-    val world = World(meta.seed, dir)
+    val world = World(meta.seed, dir, meta.flat)
     val player = Player()
     val inv = Inventory()
     val input = Input()
@@ -851,6 +851,41 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
             cursor = st
             invTick++
         }
+    }
+
+
+    fun executeCommand(raw: String) {
+        val p = raw.trim().removePrefix("/").split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (p.isEmpty()) return
+        val ok = runCatching {
+            when (p[0].lowercase()) {
+                "help" -> message = "/help /give <id> [кол-во] /tp <x> <y> <z> /heal /time <day|night> /fly /kill"
+                "heal" -> { player.health = 20f; player.hunger = 20f; refreshHud(); message = "Здоровье и голод восстановлены" }
+                "kill" -> { player.health = 0f; refreshHud(); overlay = Overlay.DEAD; message = "Команда выполнена" }
+                "fly" -> { player.flying = !player.flying; flyHud = player.flying; message = "Полёт: ${if (player.flying) "вкл." else "выкл."}" }
+                "time" -> { dayTime = if (p.getOrNull(1) == "night") 850f else 100f; message = "Время изменено" }
+                "tp" -> {
+                    require(p.size >= 4) { "Использование: /tp x y z" }
+                    player.x = p[1].toFloat(); player.y = p[2].toFloat(); player.z = p[3].toFloat()
+                    message = "Телепортация выполнена"
+                }
+                "give" -> {
+                    require(p.size >= 2) { "Использование: /give <id> [кол-во]" }
+                    val def = Reg.def(p[1]) ?: Reg.items.firstOrNull { it.key.endsWith(p[1]) }
+                    require(def != null) { "Предмет не найден: ${p[1]}" }
+                    val count = p.getOrNull(2)?.toIntOrNull()?.coerceIn(1, 999) ?: 1
+                    inv.add(ItemStack(def.id, count)); refreshHud(); message = "Выдано: ${def.name} x$count"
+                }
+                else -> message = "Неизвестная команда. Введи /help"
+            }
+        }.onFailure { message = it.message ?: "Ошибка команды" }
+        refreshHud()
+        overlay = Overlay.NONE
+    }
+
+    fun openCommands() {
+        input.reset()
+        overlay = Overlay.COMMAND
     }
 
     fun openInventory() {

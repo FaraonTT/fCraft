@@ -17,6 +17,9 @@ object Settings {
     var showFps by mutableStateOf(true)
     var dynamicColor by mutableStateOf(false)
     var uiScale by mutableFloatStateOf(1f)
+    var shaders by mutableStateOf(true)
+    var fog by mutableStateOf(true)
+    var graphicsQuality by mutableIntStateOf(1)
 
     fun init(ctx: Context) {
         val p = ctx.getSharedPreferences("fcraft", Context.MODE_PRIVATE)
@@ -27,17 +30,21 @@ object Settings {
         showFps = p.getBoolean("fps", true)
         dynamicColor = p.getBoolean("dyn", false)
         uiScale = p.getFloat("ui", 1f)
+        shaders = p.getBoolean("shaders", true)
+        fog = p.getBoolean("fog", true)
+        graphicsQuality = p.getInt("quality", 1).coerceIn(0, 2)
     }
 
     fun save() {
         prefs?.edit()
             ?.putInt("rd", renderDist)?.putFloat("fov", fov)?.putFloat("sens", sens)
             ?.putBoolean("fps", showFps)?.putBoolean("dyn", dynamicColor)?.putFloat("ui", uiScale)
+            ?.putBoolean("shaders", shaders)?.putBoolean("fog", fog)?.putInt("quality", graphicsQuality)
             ?.apply()
     }
 }
 
-class WorldMeta(val id: String, var name: String, val seed: Long, val creative: Boolean, var last: Long) {
+class WorldMeta(val id: String, var name: String, val seed: Long, val creative: Boolean, var last: Long, val flat: Boolean = false) {
     fun dir(ctx: Context) = File(Worlds.root(ctx), id)
 }
 
@@ -50,7 +57,7 @@ object Worlds {
             val f = File(d, "meta.txt")
             if (f.exists()) try {
                 val l = f.readLines()
-                res.add(WorldMeta(d.name, l[0], l[1].toLong(), l[2] == "1", l[3].toLong()))
+                res.add(WorldMeta(d.name, l[0], l[1].toLong(), l[2] == "1", l[3].toLong(), l.getOrNull(4) == "1"))
             } catch (_: Exception) {
             }
         }
@@ -60,11 +67,11 @@ object Worlds {
     fun writeMeta(ctx: Context, m: WorldMeta) {
         val d = m.dir(ctx)
         d.mkdirs()
-        File(d, "meta.txt").writeText("${m.name.replace('\n', ' ')}\n${m.seed}\n${if (m.creative) "1" else "0"}\n${m.last}\n")
+        File(d, "meta.txt").writeText("${m.name.replace('\n', ' ')}\n${m.seed}\n${if (m.creative) "1" else "0"}\n${m.last}\n${if (m.flat) "1" else "0"}\n")
     }
 
-    fun create(ctx: Context, name: String, seed: Long, creative: Boolean): WorldMeta {
-        val m = WorldMeta("w" + System.currentTimeMillis(), name.ifBlank { "Новый мир" }, seed, creative, System.currentTimeMillis())
+    fun create(ctx: Context, name: String, seed: Long, creative: Boolean, flat: Boolean = false): WorldMeta {
+        val m = WorldMeta("w" + System.currentTimeMillis(), name.ifBlank { "Новый мир" }, seed, creative, System.currentTimeMillis(), flat)
         writeMeta(ctx, m)
         return m
     }
