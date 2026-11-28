@@ -50,6 +50,7 @@ class Part(
     val color: Int, val swing: Float = 0f
 )
 
+/** speed — условная скорость; итоговая в блоках/с примерно speed * 2.2 (ходьба игрока 4.3). */
 class MobType(
     val key: String, val name: String, val hw: Float, val h: Float, val hp: Float, val speed: Float,
     val hostile: Boolean, val dmg: Float, val parts: List<Part>, val drops: List<Triple<String, Int, Int>>
@@ -71,7 +72,7 @@ object Mobs {
         val pink = 0xF0A8A0
         reg(
             MobType(
-                "pig", "Pig", 0.45f, 0.9f, 10f, 1.4f, false, 0f,
+                "pig", "Pig", 0.45f, 0.9f, 10f, 0.8f, false, 0f,
                 listOf(
                     Part(0f, 0.55f, 0f, 0.7f, 0.5f, 0.95f, pink), Part(0f, 0.7f, 0.6f, 0.5f, 0.45f, 0.45f, 0xF3B1AA),
                     Part(0f, 0.62f, 0.85f, 0.25f, 0.18f, 0.1f, 0xD98880),
@@ -83,7 +84,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "cow", "Cow", 0.45f, 1.4f, 10f, 1.2f, false, 0f,
+                "cow", "Cow", 0.45f, 1.4f, 10f, 0.7f, false, 0f,
                 listOf(
                     Part(0f, 0.95f, 0f, 0.8f, 0.7f, 1.2f, 0x4A3728), Part(0.1f, 1.0f, 0.1f, 0.5f, 0.3f, 0.5f, 0xE8E8E8),
                     Part(0f, 1.25f, 0.8f, 0.55f, 0.55f, 0.4f, 0x5A4636), Part(0f, 1.1f, 1.02f, 0.4f, 0.25f, 0.1f, 0xD8C0B0),
@@ -95,7 +96,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "sheep", "Sheep", 0.45f, 1.3f, 8f, 1.2f, false, 0f,
+                "sheep", "Sheep", 0.45f, 1.3f, 8f, 0.75f, false, 0f,
                 listOf(
                     Part(0f, 0.95f, 0f, 0.85f, 0.75f, 1.1f, 0xEDEDED), Part(0f, 1.15f, 0.7f, 0.45f, 0.45f, 0.4f, 0xC9B8A4),
                     leg(-0.22f, 0.4f, 0.2f, 0.55f, 0xC9B8A4, 0.7f), leg(0.22f, 0.4f, 0.2f, 0.55f, 0xC9B8A4, -0.7f),
@@ -106,7 +107,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "chicken", "Chicken", 0.2f, 0.7f, 4f, 1.2f, false, 0f,
+                "chicken", "Chicken", 0.2f, 0.7f, 4f, 0.8f, false, 0f,
                 listOf(
                     Part(0f, 0.45f, 0f, 0.35f, 0.4f, 0.5f, 0xF2F2F2), Part(0f, 0.75f, 0.28f, 0.22f, 0.25f, 0.2f, 0xF8F8F8),
                     Part(0f, 0.72f, 0.42f, 0.1f, 0.08f, 0.1f, 0xE8A820), Part(0f, 0.68f, 0.35f, 0.06f, 0.1f, 0.06f, 0xD02A2A),
@@ -117,7 +118,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "zombie", "Zombie", 0.3f, 1.95f, 20f, 1.6f, true, 3f,
+                "zombie", "Zombie", 0.3f, 1.95f, 20f, 0.95f, true, 2f,
                 listOf(
                     Part(0f, 1.15f, 0f, 0.5f, 0.75f, 0.25f, 0x2C8A8A), Part(0f, 1.7f, 0f, 0.5f, 0.5f, 0.5f, 0x6EA44E),
                     Part(-0.37f, 1.4f, 0.3f, 0.25f, 0.25f, 0.7f, 0x6EA44E), Part(0.37f, 1.4f, 0.3f, 0.25f, 0.25f, 0.7f, 0x6EA44E),
@@ -128,7 +129,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "skeleton", "Skeleton", 0.3f, 1.95f, 20f, 1.6f, true, 2.5f,
+                "skeleton", "Skeleton", 0.3f, 1.95f, 20f, 0.95f, true, 2f,
                 listOf(
                     Part(0f, 1.15f, 0f, 0.45f, 0.75f, 0.2f, 0xCFCFC4), Part(0f, 1.7f, 0f, 0.5f, 0.5f, 0.5f, 0xE0E0D6),
                     Part(-0.33f, 1.4f, 0.25f, 0.12f, 0.12f, 0.7f, 0xCFCFC4), Part(0.33f, 1.4f, 0.25f, 0.12f, 0.12f, 0.7f, 0xCFCFC4),
@@ -139,7 +140,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "creeper", "Creeper", 0.3f, 1.7f, 20f, 1.5f, true, 0f,
+                "creeper", "Creeper", 0.3f, 1.7f, 20f, 0.9f, true, 0f,
                 listOf(
                     Part(0f, 0.95f, 0f, 0.5f, 0.75f, 0.3f, 0x4FA33A), Part(0f, 1.5f, 0f, 0.5f, 0.5f, 0.5f, 0x5DB847),
                     leg(-0.12f, 0.14f, 0.24f, 0.35f, 0x3E8A2C, 0.6f), leg(0.12f, 0.14f, 0.24f, 0.35f, 0x3E8A2C, -0.6f),
@@ -150,7 +151,7 @@ object Mobs {
         )
         reg(
             MobType(
-                "spider", "Spider", 0.7f, 0.9f, 16f, 2.2f, true, 2f,
+                "spider", "Spider", 0.7f, 0.9f, 16f, 1.3f, true, 1.5f,
                 listOf(
                     Part(0f, 0.5f, 0f, 0.7f, 0.5f, 0.9f, 0x3A2F2F), Part(0f, 0.5f, 0.65f, 0.5f, 0.45f, 0.45f, 0x4A3A3A),
                     Part(0.1f, 0.55f, 0.75f, 0.1f, 0.1f, 0.05f, 0xD02A2A),
