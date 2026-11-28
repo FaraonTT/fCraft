@@ -5,6 +5,9 @@ import android.opengl.GLSurfaceView
 import android.opengl.GLUtils
 import android.opengl.Matrix
 import com.fcraft.core.Atlas
+import com.fcraft.core.R_CROSS
+import com.fcraft.core.R_LIQUID
+import com.fcraft.core.R_SLAB
 import com.fcraft.core.Reg
 import com.fcraft.core.Tex
 import com.fcraft.game.GameSession
@@ -34,10 +37,10 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         layout(location=1) in vec2 aUV;
         layout(location=2) in vec4 aCol;
         layout(location=3) in vec2 aLight;
-        out vec2 vUV; out vec4 vCol; out vec2 vLight; out float vDist;
+        out vec2 vUV; out vec4 vCol; out vec2 vLight; out float vDist; out vec3 vPos;
         void main() {
             gl_Position = uMVP * vec4(aPos, 1.0);
-            vUV = aUV; vCol = aCol; vLight = aLight;
+            vUV = aUV; vCol = aCol; vLight = aLight; vPos = aPos;
             vDist = length(aPos - uCam);
         }""".trimIndent()
 
@@ -49,14 +52,21 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         uniform vec3 uFog;
         uniform float uFogS;
         uniform float uFogE;
-        in vec2 vUV; in vec4 vCol; in vec2 vLight; in float vDist;
+        uniform vec4 uHeld;
+        in vec2 vUV; in vec4 vCol; in vec2 vLight; in float vDist; in vec3 vPos;
         out vec4 o;
         void main() {
             vec4 t = texture(uTex, vUV);
             float a = t.a * vCol.a;
             if (a < 0.1) discard;
-            float l = max(max(vLight.x * uSky, vLight.y), uMin);
-            vec3 c = t.rgb * vCol.rgb * l;
+            vec3 warm = vec3(1.0, 0.84, 0.56);
+            vec3 L = vec3(max(vLight.x * uSky, uMin));
+            L = max(L, warm * vLight.y);
+            if (uHeld.w > 0.0) {
+                float hd = clamp(1.0 - length(vPos - uHeld.xyz) / uHeld.w, 0.0, 1.0);
+                L = max(L, warm * hd * 0.95);
+            }
+            vec3 c = t.rgb * vCol.rgb * L;
             float f = clamp((vDist - uFogS) / (uFogE - uFogS), 0.0, 1.0);
             o = vec4(mix(c, uFog, f), a);
         }""".trimIndent()
@@ -69,6 +79,7 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
     private var uFog = 0
     private var uFogS = 0
     private var uFogE = 0
+    private var uHeld = 0
     private var dynBuf = 0
     private var dynFb: FloatBuffer = ByteBuffer.allocateDirect(4 * 4096).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val gl = HashMap<Long, ChunkGL>()
@@ -81,6 +92,7 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
     private var frames = 0
     private var fpsT = 0f
     private var frameNo = 0
+    private var bobT = 0f
     private val cols = Tex.COLS.toFloat()
 
     override fun onSurfaceCreated(g: GL10?, c: EGLConfig?) {
@@ -92,6 +104,7 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         uFog = GLES30.glGetUniformLocation(prog, "uFog")
         uFogS = GLES30.glGetUniformLocation(prog, "uFogS")
         uFogE = GLES30.glGetUniformLocation(prog, "uFogE")
+        uHeld = GLES30.glGetUniformLocation(prog, "uHeld")
         val ids = IntArray(2)
         GLES30.glGenTextures(1, ids, 0)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, ids[0])
@@ -129,7 +142,7 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
     }
 
     private fun upload(buf: Int, data: FloatArray, n: Int) {
-        val fb = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        val fb = ByteBuffer.allocateDirect(max(4, n * 4)).order(ByteOrder.nativeOrder()).asFloatBuffer()
         fb.put(data, 0, n)
         fb.position(0)
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buf)
@@ -221,7 +234,7 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
                 val ix = i and 1
                 val iy = (i shr 1) and 1
                 val iz = (i shr 2) and 1
-                var lx = (ix - 0.5f) * p.w
+                val lx = (ix - 0.5f) * p.w
                 var ly = (iy - 0.5f) * p.h
                 var lz = (iz - 0.5f) * p.d
                 if (p.swing != 0f) {
@@ -255,6 +268,158 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
                     fb.v(c[0], c[1], c[2], u, vv, r * sh, g * sh, b * sh, 1f, 1f, 0.6f)
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------ рука
+    private fun tileUv(t: Int): FloatArray {
+        val tx = t % Tex.COLS
+        val ty = t / Tex.COLS
+        val e = 0.003f
+        val rows = Tex.rows.toFloat()
+        return floatArrayOf((tx + e) / cols, (tx + 1 - e) / cols, (ty + e) / rows, (ty + 1 - e) / rows)
+    }
+
+    private fun box(
+        fb: FB, cx: Float, cy: Float, cz: Float, sx: Float, sy: Float, sz: Float,
+        top: Int, side: Int, bottom: Int, r: Float, g: Float, b: Float,
+        tr: Float = 1f, tg: Float = 1f, tb: Float = 1f
+    ) {
+        val faces = arrayOf(
+            intArrayOf(1, 5, 7, 3), intArrayOf(0, 4, 6, 2), intArrayOf(2, 3, 7, 6),
+            intArrayOf(0, 1, 5, 4), intArrayOf(4, 5, 7, 6), intArrayOf(0, 1, 3, 2)
+        )
+        val shades = floatArrayOf(0.8f, 0.8f, 1f, 0.55f, 0.7f, 0.7f)
+        val px = FloatArray(8)
+        val py = FloatArray(8)
+        val pz = FloatArray(8)
+        for (i in 0 until 8) {
+            px[i] = cx + ((i and 1) - 0.5f) * sx
+            py[i] = cy + (((i shr 1) and 1) - 0.5f) * sy
+            pz[i] = cz + (((i shr 2) and 1) - 0.5f) * sz
+        }
+        for (f in 0 until 6) {
+            val uv = tileUv(
+                when (f) {
+                    2 -> top
+                    3 -> bottom
+                    else -> side
+                }
+            )
+            val q = faces[f]
+            val sh = shades[f]
+            var cr = r
+            var cg = g
+            var cb = b
+            if (f == 2) {
+                cr *= tr; cg *= tg; cb *= tb
+            }
+            val us = floatArrayOf(uv[0], uv[1], uv[1], uv[0])
+            val vs = floatArrayOf(uv[3], uv[3], uv[2], uv[2])
+            for (k in intArrayOf(0, 1, 2, 0, 2, 3)) {
+                fb.v(px[q[k]], py[q[k]], pz[q[k]], us[k], vs[k], cr * sh, cg * sh, cb * sh, 1f, 1f, 0f)
+            }
+        }
+    }
+
+    private fun sprite(fb: FB, cx: Float, cy: Float, cz: Float, size: Float, tile: Int, r: Float, g: Float, b: Float) {
+        val uv = tileUv(tile)
+        val h = size / 2f
+        val xs = floatArrayOf(-h, h, h, -h)
+        val ys = floatArrayOf(-h, -h, h, h)
+        val us = floatArrayOf(uv[0], uv[1], uv[1], uv[0])
+        val vs = floatArrayOf(uv[3], uv[3], uv[2], uv[2])
+        for (layer in 0..1) {
+            val z = cz + layer * 0.012f
+            val sh = if (layer == 0) 1f else 0.7f
+            for (k in intArrayOf(0, 1, 2, 0, 2, 3)) {
+                fb.v(cx + xs[k], cy + ys[k], z, us[k], vs[k], r * sh, g * sh, b * sh, 1f, 1f, 0f)
+            }
+        }
+    }
+
+    private fun drawHand(skyLevel: Float, dt: Float) {
+        val p = s.player
+        val sp = hypot(p.vx, p.vz)
+        if (p.onGround && sp > 0.5f) bobT += dt * sp * 1.6f
+        val held = s.inv.slots[s.hudSel]
+        val swingA = max(if (s.swingPhase > 0f) abs(sin(s.swingPhase)) else 0f, sin(s.useSwing * 3.1415927f))
+
+        GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+        GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glUniform3f(uCam, 0f, 0f, 0f)
+        GLES30.glUniform1f(uSky, max(skyLevel, 0.6f))
+        GLES30.glUniform4f(uHeld, 0f, 0f, 0f, 0f)
+        setFog(floatArrayOf(0f, 0f, 0f), 1e6f, 2e6f)
+
+        val m = FloatArray(16)
+        val m2 = FloatArray(16)
+        val mvp = FloatArray(16)
+        Matrix.setIdentityM(m, 0)
+        Matrix.translateM(
+            m, 0,
+            0.36f + sin(bobT) * 0.012f,
+            -0.33f - abs(cos(bobT)) * 0.014f - swingA * 0.09f,
+            -0.62f - swingA * 0.14f
+        )
+        Matrix.rotateM(m, 0, -swingA * 48f, 1f, 0f, 0f)
+        Matrix.rotateM(m, 0, -swingA * 14f, 0f, 1f, 0f)
+
+        // рука
+        val fa = FB(1024)
+        box(fa, 0.1f, -0.12f, 0.2f, 0.12f, 0.12f, 0.36f, 0, 0, 0, 0.78f, 0.55f, 0.42f)
+        box(fa, 0.1f, -0.12f, 0.36f, 0.14f, 0.14f, 0.2f, 0, 0, 0, 0.23f, 0.36f, 0.63f)
+        Matrix.multiplyMM(mvp, 0, proj, 0, m, 0)
+        GLES30.glUniformMatrix4fv(uMVP, 1, false, mvp, 0)
+        drawDyn(fa)
+
+        // предмет
+        if (held != null) {
+            val d = held.def
+            val b = d.block
+            val fi = FB(1024)
+            System.arraycopy(m, 0, m2, 0, 16)
+            Matrix.translateM(m2, 0, 0.0f, 0.06f, -0.02f)
+            if (b != null && b.render != R_CROSS && b.render != R_LIQUID) {
+                Matrix.rotateM(m2, 0, 35f, 0f, 1f, 0f)
+                Matrix.rotateM(m2, 0, -10f, 1f, 0f, 0f)
+                var r = 1f
+                var g = 1f
+                var bl = 1f
+                var tr = 1f
+                var tg = 1f
+                var tb = 1f
+                when (b.tint) {
+                    1 -> {
+                        tr = 0.55f; tg = 0.76f; tb = 0.36f
+                    }
+                    2 -> {
+                        r = 0.55f; g = 0.76f; bl = 0.36f
+                    }
+                    3 -> {
+                        r = ((b.tintColor shr 16) and 255) / 255f
+                        g = ((b.tintColor shr 8) and 255) / 255f
+                        bl = (b.tintColor and 255) / 255f
+                    }
+                }
+                val hgt = if (b.render == R_SLAB) 0.14f else 0.28f
+                box(fi, 0f, if (b.render == R_SLAB) -0.07f else 0f, 0f, 0.28f, hgt, 0.28f, b.top, b.side, b.bottom, r, g, bl, tr, tg, tb)
+            } else {
+                Matrix.rotateM(m2, 0, -30f, 0f, 1f, 0f)
+                Matrix.rotateM(m2, 0, 8f, 1f, 0f, 0f)
+                val tile = if (b != null) b.side else d.icon
+                var r = 1f
+                var g = 1f
+                var bl = 1f
+                if (b != null && b.tint == 2) {
+                    r = 0.55f; g = 0.76f; bl = 0.36f
+                }
+                sprite(fi, 0f, 0.05f, 0f, 0.42f, tile, r, g, bl)
+            }
+            Matrix.multiplyMM(mvp, 0, proj, 0, m2, 0)
+            GLES30.glUniformMatrix4fv(uMVP, 1, false, mvp, 0)
+            drawDyn(fi)
         }
     }
 
@@ -346,6 +511,7 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         GLES30.glUniform3f(uCam, eyeX, eyeY, eyeZ)
         GLES30.glUniform1f(uSky, skyLevel)
         GLES30.glUniform1f(uMin, 0.07f)
+        GLES30.glUniform4f(uHeld, 0f, 0f, 0f, 0f)
 
         // солнце и луна
         if (!underwater) {
@@ -375,6 +541,11 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
             GLES30.glUniform1f(uSky, skyLevel)
         }
         setFog(clear, fogS, fogE)
+
+        // свет от предмета в руке (факел, светокамень и т.п.)
+        val hs = s.inv.slots[s.hudSel]
+        val hl = hs?.def?.block?.light ?: 0
+        if (hl > 0) GLES30.glUniform4f(uHeld, eyeX, eyeY - 0.3f, eyeZ, hl * 0.85f)
 
         // непрозрачные чанки
         val vis = ArrayList<Pair<Float, ChunkGL>>()
@@ -449,5 +620,8 @@ class GameRenderer(private val s: GameSession) : GLSurfaceView.Renderer {
         }
         GLES30.glDepthMask(true)
         GLES30.glDisable(GLES30.GL_BLEND)
+
+        // рука поверх всего
+        if (s.overlay == Overlay.NONE) drawHand(skyLevel, dt)
     }
 }
