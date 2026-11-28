@@ -152,7 +152,7 @@ fun WorldsScreen(onBack: () -> Unit, onPlay: (WorldMeta) -> Unit) {
                                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                                     Text(w.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                                     Text(
-                                        (if (w.creative) "Творческий" else "Выживание") + " • seed ${w.seed} • ${fmt(w.last)}",
+                                        (if (w.creative) "Творческий" else "Выживание") + (if (w.flat) " • Плоский" else " • Обычный") + " • seed ${w.seed} • ${fmt(w.last)}",
                                         style = MaterialTheme.typography.bodyMedium, color = cs.onSecondaryContainer
                                     )
                                 }
@@ -173,6 +173,7 @@ fun WorldsScreen(onBack: () -> Unit, onPlay: (WorldMeta) -> Unit) {
         var name by remember { mutableStateOf("") }
         var seed by remember { mutableStateOf("") }
         var creative by remember { mutableStateOf(false) }
+        var flat by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { creating = false },
             title = { Text("Новый мир") },
@@ -192,12 +193,17 @@ fun WorldsScreen(onBack: () -> Unit, onPlay: (WorldMeta) -> Unit) {
                             FilledTonalButton(onClick = { creative = true }) { Text("Творческий") }
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Плоский мир", Modifier.weight(1f))
+                        Switch(checked = flat, onCheckedChange = { flat = it })
+                    }
+                    Text("Плоский мир создаёт ровную поверхность; обычный мир использует стандартную генерацию.", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val sd = seed.trim().let { s -> s.toLongOrNull() ?: if (s.isEmpty()) System.nanoTime() else s.hashCode().toLong() }
-                    val m = Worlds.create(ctx, name.trim(), sd, creative)
+                    val m = Worlds.create(ctx, name.trim(), sd, creative, flat)
                     list.add(0, m)
                     creating = false
                 }) { Text("Создать") }
@@ -237,6 +243,16 @@ fun SettingsPanel() {
             Text("Динамические цвета (Android 12+)", Modifier.weight(1f))
             Switch(checked = Settings.dynamicColor, onCheckedChange = { Settings.dynamicColor = it })
         }
+        Text("Графика", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Шейдерное освещение", Modifier.weight(1f))
+            Switch(checked = Settings.shaders, onCheckedChange = { Settings.shaders = it })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Туман", Modifier.weight(1f))
+            Switch(checked = Settings.fog, onCheckedChange = { Settings.fog = it })
+        }
+
     }
 }
 

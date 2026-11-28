@@ -34,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -98,6 +99,7 @@ fun GameScreen(s: GameSession, onExit: () -> Unit) {
             Hud(s)
             when (s.overlay) {
                 Overlay.PAUSE -> PauseMenu(s, onExit)
+                Overlay.COMMAND -> CommandDialog(s)
                 Overlay.DEAD -> DeadScreen(s)
                 Overlay.INVENTORY -> if (s.creative) CreativeScreen(s) else SurvivalInventory(s)
                 Overlay.CRAFTING -> CraftingTable(s)
@@ -107,6 +109,23 @@ fun GameScreen(s: GameSession, onExit: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun CommandDialog(s: GameSession) {
+    var command by remember { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { s.overlay = Overlay.NONE },
+        title = { Text("Команды") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("/help — список команд")
+                OutlinedTextField(value = command, onValueChange = { command = it }, singleLine = true, label = { Text("Команда") }, placeholder = { Text("/give stone 64") })
+            }
+        },
+        confirmButton = { TextButton(onClick = { s.executeCommand(command) }) { Text("Выполнить") } },
+        dismissButton = { TextButton(onClick = { s.overlay = Overlay.NONE }) { Text("Отмена") } }
+    )
 }
 
 // ---------------------------------------------------------------- управление
@@ -213,6 +232,7 @@ private fun Hud(s: GameSession) {
         if (s.overlay == Overlay.NONE) {
             Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { s.openInventory() }) { Text("🎒") }
+                FilledTonalButton(onClick = { s.openCommands() }) { Text("⌘") }
                 FilledTonalButton(onClick = { s.pause() }) { Text("⏸") }
             }
         }
