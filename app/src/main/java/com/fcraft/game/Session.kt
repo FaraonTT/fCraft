@@ -846,7 +846,7 @@ class GameSession(val ctx: Context, val meta: WorldMeta) {
         }
     }
 
-    fun setCursor(st: ItemStack?) {
+    fun updateCursor(st: ItemStack?) {
         synchronized(lock) {
             cursor = st
             invTick++
